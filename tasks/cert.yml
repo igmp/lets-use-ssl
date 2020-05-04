@@ -1,0 +1,85 @@
+---
+- name: "Ensure a {{ cert.key }} certificate's directory exists"
+  file:
+    path: "{{ lets_use_ssl__certs_store }}/{{ cert.key }}"
+    state: directory
+    mode: 0755
+
+- name: "Ensure there's a {{ cert.key }} certificate's private key"
+  openssl_privatekey:
+    # we want this to be readable by anyone
+    mode: "0644"
+    path: "{{ lets_use_ssl__certs_store }}/{{ cert.key }}/privkey.pem"
+
+- name: "Generate CSR for {{ cert.key }} with SAN"
+  openssl_csr:
+    path: "{{ lets_use_ssl__certs_store }}/{{ cert.key }}/request.pem"
+    privatekey_path: "{{ lets_use_ssl__certs_store }}/{{ cert.key }}/privkey.pem"
+    common_name: "{{ cert.key }}"
+    subject_alt_name: "{{ cert.value.alt_names | map('regex_replace', '^(.*)$', 'DNS:\\1') | list | join(',') }}"
+  when:
+    - cert.value.alt_names is defined
+    - cert.value.alt_names | length > 0
+  register: csr_with_san
+
+- name: "Generate CSR for {{ cert.key }} without SAN"
+  openssl_csr:
+    path: "{{ lets_use_ssl__certs_store }}/{{ cert.key }}/request.pem"
+    privatekey_path: "{{ lets_use_ssl__certs_store }}/{{ cert.key }}/privkey.pem"
+    common_name: "{{ cert.key }}"
+  when: cert.value.alt_names is undefined or
+    cert.value.alt_names | length == 0
+  register: csr_without_san
+
+- name: "Look at the {{ cert.key }}'s certificate signing request"
+  stat:
+    path: "{{ lets_use_ssl__certs_store }}/{{ cert.key }}/request.pem"
+  register: request
+
+- name: "Look at the current {{ cert.key }}'s certificate"
+  stat:
+    path: "{{ lets_use_ssl__certs_store }}/{{ cert.key }}/fullchain.pem"
+  register: fullchain
+
+- name: "Ask for an ACME challenge about {{ cert.key }}"
+  acme_certificate:
+    account_email: "{{ lets_use_ssl__account_email }}"
+    account_key_src: "{{ lets_use_ssl__account_key_path }}"
+    acme_directory: "{{ lets_use_ssl__acme_directory }}"
+    acme_version: "{{ lets_use_ssl__acme_version }}"
+    cert: "{{ lets_use_ssl__certs_store }}/{{ cert.key }}/cert.pem"
+    challenge: dns-01
+    csr: "{{ lets_use_ssl__certs_store }}/{{ cert.key }}/request.pem"
+    force: "{{ csr_with_san.changed or
+               csr_without_san.changed or
+               fullchain.stat.mtime is undefined or
+               request.stat.mtime > fullchain.stat.mtime }}"
+    remaining_days: "{{ lets_use_ssl__remaining_days }}"
+  register: challenge
+
+- name: "Actually make the {{ cert.key }} certificate"
+  when:
+    - challenge.changed
+    - challenge.challenge_data_dns is defined
+    - challenge.challenge_data_dns != None
+  block:
+    - name: "Place data from the {{ cert.key }}'s ACME challenge into DNS"
+      include_tasks: route53.yml
+      loop: '{{ challenge.challenge_data_dns | default({}) | dict2items }}'
+      loop_control:
+        loop_var: data
+
+    - name: "Validate the {{ cert.key }}'s ACME challenge and retrieve signed certificates"
+      acme_certificate:
+        account_email: "{{ lets_use_ssl__account_email }}"
+        account_key_src: "{{ lets_use_ssl__account_key_path }}"
+        acme_directory: "{{ lets_use_ssl__acme_directory }}"
+        acme_version: "{{ lets_use_ssl__acme_version }}"
+        cert: "{{ lets_use_ssl__certs_store }}/{{ cert.key }}/cert.pem"
+        chain: "{{ lets_use_ssl__certs_store }}/{{ cert.key }}/chain.pem"
+        challenge: dns-01
+        csr: "{{ lets_use_ssl__certs_store }}/{{ cert.key }}/request.pem"
+        data: "{{ challenge }}"
+        force: "{{ csr_with_san.changed or csr_without_san.changed }}"
+        fullchain: "{{ lets_use_ssl__certs_store }}/{{ cert.key }}/fullchain.pem"
+        remaining_days: "{{ lets_use_ssl__remaining_days }}"

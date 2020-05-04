@@ -1,0 +1,33 @@
+---
+- name: Ensure python-openssl is installed
+  apt:
+    name: python-openssl
+    state: present
+
+- name: "Ensure there's a private key at {{ lets_use_ssl__account_key_path }}"
+  openssl_privatekey:
+    path: "{{ lets_use_ssl__account_key_path }}"
+
+- name: "Ensure {{ lets_use_ssl__account_email }} ACME account exists"
+  acme_account:
+    account_key_src: "{{ lets_use_ssl__account_key_path }}"
+    acme_directory: "{{ lets_use_ssl__acme_directory }}"
+    acme_version: "{{ lets_use_ssl__acme_version }}"
+    contact:
+      - "mailto:{{ lets_use_ssl__account_email }}"
+    state: present
+    terms_agreed: yes
+
+- name: Load certificates
+  include_vars:
+    dir: ../../../vars/lets-use-ssl
+    name: lets_use_ssl__certificates
+    files_matching: >-
+      {% if lets_use_ssl__include is defined %}^{{ lets_use_ssl__include }}\.{% endif %}
+    ignore_unknown_extensions: true
+
+- name: "Go through all the supplied {{ lets_use_ssl__certificates | length }} certificates"
+  loop: "{{ query('dict', lets_use_ssl__certificates) }}"
+  loop_control:
+    loop_var: cert
+  include: cert.yml

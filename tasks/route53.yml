@@ -1,0 +1,19 @@
+---
+- name: "Make a DNS record: {{ record }}.{{ zone }} TXT [{{ value | join(', ') }}]"
+  route53:
+    overwrite: yes
+    record: "{{ record }}"
+    state: present
+    ttl: 60
+    type: TXT
+    value: "{{ value }}"
+    wait: true
+    zone: "{{ zone }}"
+  vars:
+    record: "{{ data.key }}"
+    # data.value is a list and so each of its elements has to be quoted separately
+    value: "{{ data.value | map('regex_replace', '^(.*)$', '\"\\1\"' ) | list }}"
+    # zone is derived from the common_name unless it's stated explicitly
+    zone: >-
+      {{ cert.zone is defined | ternary(cert.zone,
+                                        data.key | regex_replace('(.*\.)?([^.]+\.[^.]+)$', '\2')) }}

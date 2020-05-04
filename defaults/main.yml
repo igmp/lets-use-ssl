@@ -1,0 +1,23 @@
+## Directory where to place certifcates.
+lets_use_ssl__certs_store: /etc/ssl/letsencrypt
+
+## Account's private key.  Will be created if it does not exist yet.
+lets_use_ssl__account_key_path: /etc/ssl/private/account.key
+
+## Account's email.
+lets_use_ssl__account_email: skyeng-domains@yandex.ru
+
+## Whether we are in production.  Use staging environment by default.
+lets_use_ssl__production: false
+
+## Try to renew a certificate once we have that few days till the end of it.
+lets_use_ssl__remaining_days: 30
+
+## ACME protocol version & API endpoint and version to use.
+## Ansible acme_* modules require version 2.
+lets_use_ssl__acme_version: 2
+lets_use_ssl__acme_production_directory: https://acme-v02.api.letsencrypt.org/directory
+lets_use_ssl__acme_staging_directory: https://acme-staging-v02.api.letsencrypt.org/directory
+lets_use_ssl__acme_directory: >-
+  {{ lets_use_ssl__production | ternary(lets_use_ssl__acme_production_directory,
+                                        lets_use_ssl__acme_staging_directory) }}
