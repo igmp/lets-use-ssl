@@ -1,0 +1,13 @@
+---
+dependencies: []
+
+galaxy_info:
+  author: Igor Plekhov
+  description: "Use numerous Let's Encrypt certificates and have them all in one place."
+  min_ansible_version: 2.7
+  galaxy_tags:
+    - acme
+    - certificate
+    - letsencrypt
+    - ssl
+    - web
